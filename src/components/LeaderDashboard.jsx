@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { 
   CheckCircle2, Clock, AlertCircle, Trophy, TrendingUp, AlertTriangle,
-  Users, CheckCircle, Star, ChevronRight, RefreshCw, Edit2, Trash2, X, Eye, Paperclip, FileText, Image, Download, MessageSquare, Send
+  Users, CheckCircle, Star, ChevronRight, RefreshCw, Edit2, Trash2, X, Eye, Paperclip, FileText, Image, Download, MessageSquare, Send, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -24,6 +24,8 @@ const LeaderDashboard = ({ onTaskClick }) => {
   const [issueNotes, setIssueNotes] = useState([]);
   const [issueReply, setIssueReply] = useState('');
   const [loadingNotes, setLoadingNotes] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [teamViewExpanded, setTeamViewExpanded] = useState({});
 
   const calculateStats = useCallback((tasksData) => {
     setStats({
@@ -400,36 +402,130 @@ const LeaderDashboard = ({ onTaskClick }) => {
           <span className="text-sm text-slate-500">{tasks.length} total</span>
         </div>
         <div className="divide-y divide-slate-100">
-          {tasks.map(task => (
-            <div key={task.id} className="p-4 hover:bg-slate-50 transition-colors">
-              <div className="flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-medium text-slate-800 truncate">{task.title}</h3>
-                    {task.is_new && <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-medium rounded-full animate-pulse">New</span>}
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: '#10B981' }}>{task.assignee_name?.[0]?.toUpperCase() || 'U'}</div>
-                      {task.assignee_name}
-                    </span>
-                    <span className={getPriorityColor(task.priority)}>{task.priority}</span>
-                    <span>{formatDate(task.created_at)}</span>
+          {tasks.map(task => {
+            const isExpanded = expandedTaskId === task.id;
+            return (
+              <div key={task.id} className="hover:bg-slate-50 transition-colors">
+                <div onClick={() => setExpandedTaskId(isExpanded ? null : task.id)} className="p-4 cursor-pointer">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-medium text-slate-800 truncate">{task.title}</h3>
+                        {task.is_new && <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-medium rounded-full animate-pulse">New</span>}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: '#10B981' }}>{task.assignee_name?.[0]?.toUpperCase() || 'U'}</div>
+                          {task.assignee_name}
+                        </span>
+                        <span className={getPriorityColor(task.priority)}>{task.priority}</span>
+                        <span>{formatDate(task.created_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(task.status)}`}>{getStatusLabel(task.status)}</span>
+                      <ChevronDown size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(task.status)}`}>{getStatusLabel(task.status)}</span>
-                  <button onClick={() => handleEditTask(task)} className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="Edit Task">
-                    <Edit2 size={16} />
-                  </button>
-                  <button onClick={() => setDeletingTask(task)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Task">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                {isExpanded && (
+                  <div className="px-4 pb-4 bg-slate-50 border-t border-slate-100">
+                    <div className="py-3 space-y-2">
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-slate-500">Assigned to:</span>
+                        <span className="font-medium text-slate-800">{task.assignee_name}</span>
+                      </div>
+                      {task.description && (
+                        <div className="flex items-start gap-4 text-sm">
+                          <span className="text-slate-500">Description:</span>
+                          <span className="text-slate-700">{task.description}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-slate-500">Priority:</span>
+                        <span className="font-medium text-slate-800 capitalize">{task.priority}</span>
+                      </div>
+                      {task.due_date && (
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-slate-500">Due Date:</span>
+                          <span className="font-medium text-slate-800">{formatDate(task.due_date)}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 pt-2">
+                        <button onClick={(e) => { e.stopPropagation(); handleEditTask(task); }} className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm rounded-lg transition-colors flex items-center gap-1">
+                          <Edit2 size={14} />Edit
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeletingTask(task); }} className="px-3 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 text-sm rounded-lg transition-colors flex items-center gap-1">
+                          <Trash2 size={14} />Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           {tasks.length === 0 && <div className="p-8 text-center text-slate-500">No tasks yet. Create your first task!</div>}
+        </div>
+      </div>
+
+      {/* Team-wise Task View */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Users size={18} className="text-primary-600" />
+            Team Tasks
+          </h2>
+          <span className="text-sm text-slate-500">{teamMembers.length} members</span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {teamMembers.map(member => {
+            const memberTasks = tasks.filter(t => t.assignee_id === member.id);
+            const isExpanded = teamViewExpanded[member.id];
+            return (
+              <div key={member.id} className="hover:bg-slate-50 transition-colors">
+                <div onClick={() => setTeamViewExpanded(prev => ({ ...prev, [member.id]: !prev[member.id] }))} className="p-4 cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold" style={{ backgroundColor: member.avatar_color || '#4F46E5' }}>{getInitials(member.display_name)}</div>
+                      <div>
+                        <h3 className="font-medium text-slate-800">{member.display_name}</h3>
+                        <p className="text-sm text-slate-500">{memberTasks.length} tasks assigned</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-sm">
+                        <Star size={14} className="text-amber-500" fill="currentColor" />
+                        <span className="font-medium text-amber-600">{member.yearly_points || 0}</span>
+                      </span>
+                      <ChevronDown size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
+                  </div>
+                </div>
+                {isExpanded && memberTasks.length > 0 && (
+                  <div className="px-4 pb-4 bg-slate-50 border-t border-slate-100">
+                    <div className="py-3 space-y-2">
+                      {memberTasks.map(task => (
+                        <div key={task.id} className="flex items-center justify-between p-2 bg-white rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${task.status === 'approved' ? 'bg-purple-500' : task.status === 'completed' ? 'bg-emerald-500' : task.status === 'half_done' ? 'bg-blue-500' : task.status === 'in_progress' ? 'bg-amber-500' : 'bg-red-500'}`}></div>
+                            <span className="text-sm text-slate-700">{task.title}</span>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusColor(task.status).split(' ')[0]} ${getStatusColor(task.status).split(' ')[1]}`}>{getStatusLabel(task.status)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {isExpanded && memberTasks.length === 0 && (
+                  <div className="px-4 pb-4 bg-slate-50 border-t border-slate-100">
+                    <p className="py-3 text-sm text-slate-500 text-center">No tasks assigned to this member</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {teamMembers.length === 0 && <div className="p-8 text-center text-slate-500">No team members yet</div>}
         </div>
       </div>
 

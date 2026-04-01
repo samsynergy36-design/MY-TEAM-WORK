@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
-import { ArrowLeft, Users, Trophy, CheckCircle2, TrendingUp, Star, Crown, Plus, X, UserPlus } from 'lucide-react';
+import { ArrowLeft, Users, Trophy, CheckCircle2, TrendingUp, Star, Crown, Plus, X, UserPlus, Edit2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const TeamManagement = ({ onBack }) => {
@@ -11,6 +11,9 @@ const TeamManagement = ({ onBack }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMember, setNewMember] = useState({ username: '', displayName: '', password: '' });
   const [creating, setCreating] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [editForm, setEditForm] = useState({ username: '', displayName: '', password: '' });
+  const [deletingMember, setDeletingMember] = useState(null);
 
   const fetchMembers = async () => {
     const { data } = await supabase.from('users').select('*').eq('role', 'member').order('yearly_points', { ascending: false });
@@ -66,6 +69,79 @@ const TeamManagement = ({ onBack }) => {
       toast.error('Failed to add member');
     }
     setCreating(false);
+  };
+
+  const handleEditClick = (member) => {
+    setEditingMember(member);
+    setEditForm({
+      username: member.username,
+      displayName: member.display_name || '',
+      password: ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm.username || !editForm.displayName) {
+      toast.error('Username and display name are required');
+      return;
+    }
+
+    try {
+      const updateData = {
+        username: editForm.username,
+        display_name: editForm.displayName
+      };
+
+      if (editForm.password && editForm.password.length >= 6) {
+        updateData.password = editForm.password;
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', editingMember.id);
+
+      if (error) {
+        if (error.message.includes('duplicate')) {
+          toast.error('Username already exists');
+        } else {
+          toast.error(error.message);
+        }
+      } else {
+        toast.success('Member updated successfully!');
+        setEditingMember(null);
+        setEditForm({ username: '', displayName: '', password: '' });
+        fetchMembers();
+      }
+    } catch (error) {
+      toast.error('Failed to update member');
+    }
+  };
+
+  const handleDeleteMember = async () => {
+    if (!deletingMember) return;
+
+    try {
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('assignee_id', deletingMember.id);
+
+      if (taskError) throw taskError;
+
+      const { error: userError } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', deletingMember.id);
+
+      if (userError) throw userError;
+
+      toast.success(`${deletingMember.display_name} removed from team`);
+      setDeletingMember(null);
+      fetchMembers();
+    } catch (error) {
+      toast.error('Failed to delete member');
+    }
   };
 
   const sortedMembers = [...teamMembers].sort((a, b) => (b.yearly_points || 0) - (a.yearly_points || 0));
@@ -138,6 +214,7 @@ const TeamManagement = ({ onBack }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Points</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Avg Score</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Joined</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -175,6 +252,16 @@ const TeamManagement = ({ onBack }) => {
                       <span className="text-slate-700">{avgScore}</span><span className="text-slate-400 text-sm">/10</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{formatDate(member.created_at)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleEditClick(member)} className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="Edit">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => setDeletingMember(member)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -218,6 +305,57 @@ const TeamManagement = ({ onBack }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Member Modal */}
+      {editingMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Edit2 size={20} className="text-primary-600" />Edit Team Member</h2>
+              <button onClick={() => setEditingMember(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                <input type="text" value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none" placeholder="johndoe" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <input type="text" value={editForm.displayName} onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none" placeholder="John Doe" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">New Password (leave empty to keep current)</label>
+                <input type="password" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none" placeholder="Minimum 6 characters" minLength={6} />
+              </div>
+              <div className="flex items-center gap-3 pt-4">
+                <button onClick={() => setEditingMember(null)} className="px-4 py-2.5 border border-slate-200 text-slate-600 font-medium rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+                <button onClick={handleSaveEdit} className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <Edit2 size={18} />Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={32} className="text-red-600" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-800 mb-2">Remove Team Member?</h2>
+              <p className="text-slate-500 mb-6">Are you sure you want to remove "{deletingMember.display_name}"? This will also delete all their tasks. This action cannot be undone.</p>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setDeletingMember(null)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 font-medium rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+                <button onClick={handleDeleteMember} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors">Remove</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

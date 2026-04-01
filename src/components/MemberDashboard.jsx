@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
-import { CheckCircle2, Clock, AlertCircle, Trophy, Star, ChevronRight, RefreshCw, Target, Zap, AlertTriangle, Send, X } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, Trophy, Star, ChevronRight, RefreshCw, Target, Zap, AlertTriangle, Send, X, Crown } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const MemberDashboard = ({ onTaskClick }) => {
@@ -11,6 +11,7 @@ const MemberDashboard = ({ onTaskClick }) => {
   const [filter, setFilter] = useState('all');
   const [raisingIssue, setRaisingIssue] = useState(null);
   const [issueDescription, setIssueDescription] = useState('');
+  const [teamMembers, setTeamMembers] = useState([]);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -24,7 +25,20 @@ const MemberDashboard = ({ onTaskClick }) => {
       setLoading(false);
     };
 
-    if (userData?.id) fetchTasks();
+    const fetchTeamMembers = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'member')
+        .order('yearly_points', { ascending: false });
+      
+      if (data) setTeamMembers(data);
+    };
+
+    if (userData?.id) {
+      fetchTasks();
+      fetchTeamMembers();
+    }
 
     const channel = supabase
       .channel('tasks_member_changes')
@@ -199,6 +213,54 @@ const MemberDashboard = ({ onTaskClick }) => {
             <span className="text-sm text-slate-500">Avg Score</span>
           </div>
           <p className="text-2xl font-bold text-slate-800">{stats.avgScore}/10</p>
+        </div>
+      </div>
+
+      {/* Team Leaderboard */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Crown size={18} className="text-amber-500" />
+            Team Leaderboard
+          </h2>
+          <span className="text-sm text-slate-500">{teamMembers.length} members</span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {teamMembers.map((member, index) => {
+            const isCurrentUser = member.id === userData?.id;
+            return (
+              <div key={member.id} className={`p-4 flex items-center justify-between ${isCurrentUser ? 'bg-primary-50' : 'hover:bg-slate-50'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-8">
+                    {index < 3 ? (
+                      <span className={`text-lg ${index === 0 ? '' : index === 1 ? '' : ''}`}>
+                        {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-slate-500 font-medium">{index + 1}</span>
+                    )}
+                  </div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold" style={{ backgroundColor: member.avatar_color || '#4F46E5' }}>
+                    {member.display_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                  <div>
+                    <p className={`font-medium ${isCurrentUser ? 'text-primary-700' : 'text-slate-800'}`}>
+                      {member.display_name}
+                      {isCurrentUser && <span className="ml-2 text-xs text-primary-600">(You)</span>}
+                    </p>
+                    <p className="text-sm text-slate-500">{member.tasks_completed || 0} tasks completed</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Star size={16} className="text-amber-500" fill="currentColor" />
+                  <span className="text-lg font-bold text-amber-600">{member.yearly_points || 0}</span>
+                </div>
+              </div>
+            );
+          })}
+          {teamMembers.length === 0 && (
+            <div className="p-8 text-center text-slate-500">No team members yet</div>
+          )}
         </div>
       </div>
 
