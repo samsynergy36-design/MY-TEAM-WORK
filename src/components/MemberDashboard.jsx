@@ -60,12 +60,25 @@ const MemberDashboard = ({ onTaskClick }) => {
 
   const handleStatusUpdate = async (taskId, newStatus) => {
     try {
+      const isResubmit = newStatus === 'completed';
+      
       const { error } = await supabase
         .from('tasks')
         .update({ status: newStatus, updated_at: new Date().toISOString(), is_new: false })
         .eq('id', taskId);
 
       if (error) throw error;
+
+      if (isResubmit) {
+        await supabase.from('task_notes').insert({
+          task_id: taskId,
+          content: '📤 Task resubmitted for review after revision',
+          author_id: user.id,
+          author_name: userData.display_name,
+          author_role: userData.role
+        });
+      }
+
       toast.success(`Status updated to "${getStatusLabel(newStatus)}"`, { icon: '✅' });
       refreshUserData();
     } catch (error) {
@@ -110,6 +123,7 @@ const MemberDashboard = ({ onTaskClick }) => {
       in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
       half_done: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
       issue_raised: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
+      revision_requested: { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500' },
       completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
       approved: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500' }
     };
@@ -117,7 +131,7 @@ const MemberDashboard = ({ onTaskClick }) => {
   };
 
   const getStatusLabel = (status) => {
-    const labels = { not_started: 'Not Started', in_progress: 'In Progress', half_done: 'Half Done', issue_raised: 'Issue Raised', completed: 'Completed', approved: 'Approved' };
+    const labels = { not_started: 'Not Started', in_progress: 'In Progress', half_done: 'Half Done', issue_raised: 'Issue Raised', revision_requested: 'Revision Requested', completed: 'Completed', approved: 'Approved' };
     return labels[status] || 'Unknown';
   };
 
@@ -272,6 +286,7 @@ const MemberDashboard = ({ onTaskClick }) => {
             { id: 'not_started', label: 'To Do', count: stats.pending },
             { id: 'in_progress', label: 'In Progress', count: stats.inProgress },
             { id: 'half_done', label: 'Half Done', count: tasks.filter(t => t.status === 'half_done').length },
+            { id: 'revision_requested', label: '🔄 Revision Requested', count: tasks.filter(t => t.status === 'revision_requested').length, color: 'text-orange-600' },
             { id: 'issue_raised', label: '⚠️ Issues Raised', count: stats.issues, color: 'text-red-600' },
             { id: 'completed', label: 'Completed', count: tasks.filter(t => t.status === 'completed').length },
             { id: 'approved', label: 'Approved', count: stats.completed },
@@ -327,6 +342,11 @@ const MemberDashboard = ({ onTaskClick }) => {
                             {getStatusLabel(status)}
                           </button>
                         ))}
+                        {task.status === 'revision_requested' && (
+                          <button onClick={() => handleStatusUpdate(task.id, 'completed')} className="px-2 py-1 text-xs rounded bg-orange-500 text-white hover:bg-orange-600 ml-2">
+                            Resubmit
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { 
   CheckCircle2, Clock, AlertCircle, Trophy, TrendingUp, AlertTriangle,
-  Users, CheckCircle, Star, ChevronRight, RefreshCw, Edit2, Trash2, X, Eye, Paperclip, FileText, Image, Download, MessageSquare, Send, ChevronDown
+  Users, CheckCircle, Star, ChevronRight, RefreshCw, Edit2, Trash2, X, Eye, Paperclip, FileText, Image, Download, MessageSquare, Send, ChevronDown, RotateCcw, FileSpreadsheet
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -26,6 +26,10 @@ const LeaderDashboard = ({ onTaskClick }) => {
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [teamViewExpanded, setTeamViewExpanded] = useState({});
+  const [sendBackTask, setSendBackTask] = useState(null);
+  const [sendBackIssues, setSendBackIssues] = useState([]);
+  const [sendBackCustomRemark, setSendBackCustomRemark] = useState('');
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const calculateStats = useCallback((tasksData) => {
     setStats({
@@ -159,6 +163,130 @@ const LeaderDashboard = ({ onTaskClick }) => {
     }
   };
 
+  const handleSendBack = async () => {
+    if (!sendBackTask || (!sendBackIssues.length && !sendBackCustomRemark.trim())) {
+      toast.error('Please select at least one issue or add a remark');
+      return;
+    }
+
+    try {
+      const issueText = sendBackIssues.join(', ') + (sendBackCustomRemark ? (sendBackIssues.length ? ', ' : '') + sendBackCustomRemark : '');
+      
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .update({ status: 'revision_requested', is_new: true })
+        .eq('id', sendBackTask.id);
+
+      if (taskError) throw taskError;
+
+      const { error: noteError } = await supabase.from('task_notes').insert({
+        task_id: sendBackTask.id,
+        content: `🔄 REVISION REQUESTED: ${issueText}`,
+        author_id: user.id,
+        author_name: userData.display_name,
+        author_role: userData.role
+      });
+
+      if (noteError) throw noteError;
+
+      toast.success('Task sent back for revision!', { icon: '🔄' });
+      setSendBackTask(null);
+      setSendBackIssues([]);
+      setSendBackCustomRemark('');
+      fetchData();
+    } catch (error) {
+      toast.error('Failed to send back for revision');
+    }
+  };
+
+  const downloadReport = async (format) => {
+    const [year, month] = reportMonth.split('-');
+    const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
+    
+    const startDate = new Date(year, month - 1, 1).toISOString();
+    const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+    const { data: monthTasks } = await supabase
+      .from('tasks')
+      .select('*')
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
+
+    const reportData = teamMembers.map(member => {
+      const memberTasks = (monthTasks || []).filter(t => t.assignee_id === member.id);
+      return {
+        name: member.display_name,
+        assigned: memberTasks.length,
+        completed: memberTasks.filter(t => t.status === 'approved').length,
+        pending: memberTasks.filter(t => ['not_started', 'in_progress', 'half_done', 'revision_requested'].includes(t.status)).length,
+        points: memberTasks.filter(t => t.status === 'approved').reduce((sum, t) => sum + (t.points || 0), 0),
+        issues: memberTasks.filter(t => t.status === 'issue_raised').length
+      };
+    });
+
+    if (format === 'csv') {
+      const csv = 'Name,Assigned Tasks,Completed Tasks,Pending Tasks,Points Earned,Issues Raised\n' +
+        reportData.map(r => `${r.name},${r.assigned},${r.completed},${r.pending},${r.points},${r.issues}`).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TeamSync-Report-${monthName}-${year}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV report downloaded!');
+    } else {
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>TeamSync Report - ${monthName} ${year}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { text-align: center; color: #4F46E5; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            th { background: #4F46E5; color: white; }
+            tr:nth-child(even) { background: #f9f9f9; }
+            .summary { text-align: center; margin-top: 20px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <h1>TeamSync Progress Report</h1>
+          <p style="text-align:center">${monthName} ${year}</p>
+          <table>
+            <tr>
+              <th>Team Member</th>
+              <th>Assigned</th>
+              <th>Completed</th>
+              <th>Pending</th>
+              <th>Points</th>
+              <th>Issues</th>
+            </tr>
+            ${reportData.map(r => `
+              <tr>
+                <td>${r.name}</td>
+                <td>${r.assigned}</td>
+                <td>${r.completed}</td>
+                <td>${r.pending}</td>
+                <td>${r.points}</td>
+                <td>${r.issues}</td>
+              </tr>
+            `).join('')}
+          </table>
+          <div class="summary">
+            Generated on ${new Date().toLocaleDateString()} | TeamSync Progress App
+          </div>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+      toast.success('PDF report opened - print or save as PDF');
+    }
+  };
+
   const openApprovalModal = (task) => {
     setApprovingTask(task);
     setPoints(5);
@@ -268,6 +396,7 @@ const LeaderDashboard = ({ onTaskClick }) => {
       in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
       half_done: 'bg-blue-100 text-blue-700 border-blue-200',
       issue_raised: 'bg-red-100 text-red-700 border-red-200',
+      revision_requested: 'bg-orange-100 text-orange-700 border-orange-200',
       completed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
       approved: 'bg-purple-100 text-purple-700 border-purple-200'
     };
@@ -275,7 +404,7 @@ const LeaderDashboard = ({ onTaskClick }) => {
   };
 
   const getStatusLabel = (status) => {
-    const labels = { not_started: 'Not Started', in_progress: 'In Progress', half_done: 'Half Done', issue_raised: 'Issue Raised', completed: 'Completed', approved: 'Approved' };
+    const labels = { not_started: 'Not Started', in_progress: 'In Progress', half_done: 'Half Done', issue_raised: 'Issue Raised', revision_requested: 'Revision Requested', completed: 'Completed', approved: 'Approved' };
     return labels[status] || 'Unknown';
   };
 
@@ -313,9 +442,30 @@ const LeaderDashboard = ({ onTaskClick }) => {
           <h1 className="text-2xl font-bold text-slate-800">Team Dashboard</h1>
           <p className="text-slate-500">Monitor your team's progress in real-time</p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">
-          <RefreshCw size={14} />
-          Live Updates
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <select
+              value={reportMonth}
+              onChange={(e) => setReportMonth(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-primary-500 outline-none"
+            >
+              {Array.from({ length: 12 }, (_, i) => {
+                const date = new Date();
+                date.setMonth(date.getMonth() - i);
+                return date;
+              }).map(date => (
+                <option key={date.toISOString().slice(0, 7)} value={date.toISOString().slice(0, 7)}>
+                  {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button onClick={() => downloadReport('pdf')} className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg flex items-center gap-2">
+            <FileText size={16} />PDF
+          </button>
+          <button onClick={() => downloadReport('csv')} className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg flex items-center gap-2">
+            <FileSpreadsheet size={16} />CSV
+          </button>
         </div>
       </div>
 
@@ -615,10 +765,78 @@ const LeaderDashboard = ({ onTaskClick }) => {
 
             <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-3">
               <button onClick={() => { setApprovingTask(null); setApprovingTaskAttachments([]); }} className="flex-1 py-2.5 border border-slate-200 text-slate-600 font-medium rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+              <button onClick={() => setSendBackTask(approvingTask)} className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                <RotateCcw size={18} />
+                Send Back for Revision
+              </button>
               <button onClick={handleApprove} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
                 <CheckCircle size={18} />
-                Approve & Award {points} Points
+                Approve
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Back for Revision Modal */}
+      {sendBackTask && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-orange-100 bg-orange-50 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <RotateCcw size={20} className="text-orange-600" />
+                Send Back for Revision
+              </h2>
+              <button onClick={() => { setSendBackTask(null); setSendBackIssues([]); setSendBackCustomRemark(''); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="text-sm text-slate-500">Task:</p>
+                <p className="font-medium text-slate-800">{sendBackTask.title}</p>
+                <p className="text-sm text-slate-500 mt-1">Assigned to: {sendBackTask.assignee_name}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Select Issues (check all that apply)</label>
+                <div className="space-y-2">
+                  {['Missing proof', 'Incomplete details', 'Wrong format', 'Other'].map(issue => (
+                    <label key={issue} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sendBackIssues.includes(issue)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSendBackIssues([...sendBackIssues, issue]);
+                          } else {
+                            setSendBackIssues(sendBackIssues.filter(i => i !== issue));
+                          }
+                        }}
+                        className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500"
+                      />
+                      <span className="text-slate-700">{issue}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Additional Remarks (optional)</label>
+                <textarea
+                  value={sendBackCustomRemark}
+                  onChange={(e) => setSendBackCustomRemark(e.target.value)}
+                  placeholder="Add any additional details or instructions..."
+                  className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-orange-500 outline-none resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button onClick={() => { setSendBackTask(null); setSendBackIssues([]); setSendBackCustomRemark(''); }} className="flex-1 py-2.5 border border-slate-200 text-slate-600 font-medium rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+                <button onClick={handleSendBack} className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <RotateCcw size={18} />
+                  Send Back
+                </button>
+              </div>
             </div>
           </div>
         </div>

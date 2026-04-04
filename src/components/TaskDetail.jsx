@@ -200,12 +200,12 @@ const TaskDetail = ({ task, onClose }) => {
   };
 
   const getStatusColor = (status) => {
-    const colors = { not_started: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' }, in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' }, half_done: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' }, completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' }, approved: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500' } };
+    const colors = { not_started: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' }, in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' }, half_done: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' }, issue_raised: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' }, revision_requested: { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500' }, completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' }, approved: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500' } };
     return colors[status] || colors.not_started;
   };
 
   const getStatusLabel = (status) => {
-    const labels = { not_started: 'Not Started', in_progress: 'In Progress', half_done: 'Half Done', completed: 'Completed', approved: 'Approved' };
+    const labels = { not_started: 'Not Started', in_progress: 'In Progress', half_done: 'Half Done', issue_raised: 'Issue Raised', revision_requested: 'Revision Requested', completed: 'Completed', approved: 'Approved' };
     return labels[status] || 'Unknown';
   };
 
